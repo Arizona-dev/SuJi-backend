@@ -1,0 +1,56 @@
+services:
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: kyucollect_postgres_test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: kyucollect_test
+    ports:
+      - "5433:5432"  # Use different port to avoid conflicts
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kyucollect_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: kyucollect_redis_test
+    ports:
+      - "6380:6379"  # Use different port to avoid conflicts
+    tmpfs:
+      - /data
+    command: redis-server --appendonly no  # No persistence for tests
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: kyucollect_app_test
+    environment:
+      - NODE_ENV=test
+      - TEST_DB_HOST=postgres_test
+      - TEST_DB_PORT=5432
+      - TEST_DB_USERNAME=postgres
+      - TEST_DB_PASSWORD=password
+      - TEST_DB_NAME=kyucollect_test
+      - JWT_SECRET=test-jwt-secret-key-for-testing-only
+      - JWT_EXPIRES_IN=1h
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      redis_test:
+        condition: service_started
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  postgres_test_data:
