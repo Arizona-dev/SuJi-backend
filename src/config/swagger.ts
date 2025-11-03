@@ -117,6 +117,156 @@ const swaggerDefinition = {
           },
         },
       },
+      Order: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            format: "uuid",
+          },
+          orderNumber: {
+            type: "string",
+          },
+          status: {
+            type: "string",
+            enum: [
+              "pending",
+              "confirmed",
+              "preparing",
+              "ready",
+              "completed",
+              "cancelled",
+            ],
+          },
+          totalAmount: {
+            type: "number",
+            format: "decimal",
+          },
+          discountAmount: {
+            type: "number",
+            format: "decimal",
+          },
+          scheduledTime: {
+            type: "string",
+            format: "date-time",
+          },
+          chefNotes: {
+            type: "string",
+          },
+          storeId: {
+            type: "string",
+            format: "uuid",
+          },
+          customerId: {
+            type: "string",
+            format: "uuid",
+          },
+          items: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/OrderItem",
+            },
+          },
+          payments: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/Payment",
+            },
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+          },
+          updatedAt: {
+            type: "string",
+            format: "date-time",
+          },
+        },
+      },
+      OrderItem: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            format: "uuid",
+          },
+          name: {
+            type: "string",
+          },
+          price: {
+            type: "number",
+            format: "decimal",
+          },
+          quantity: {
+            type: "integer",
+          },
+          customizations: {
+            type: "object",
+          },
+          orderId: {
+            type: "string",
+            format: "uuid",
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+          },
+          updatedAt: {
+            type: "string",
+            format: "date-time",
+          },
+        },
+      },
+      Payment: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            format: "uuid",
+          },
+          amount: {
+            type: "number",
+            format: "decimal",
+          },
+          method: {
+            type: "string",
+            enum: [
+              "stripe",
+              "swile",
+              "edenred",
+              "sodexo",
+              "apetiz",
+              "up_dejeuner",
+              "cash",
+            ],
+          },
+          status: {
+            type: "string",
+            enum: ["pending", "completed", "failed", "refunded"],
+          },
+          transactionId: {
+            type: "string",
+          },
+          externalId: {
+            type: "string",
+          },
+          orderId: {
+            type: "string",
+            format: "uuid",
+          },
+          metadata: {
+            type: "object",
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+          },
+          updatedAt: {
+            type: "string",
+            format: "date-time",
+          },
+        },
+      },
     },
   },
   security: [
