@@ -1,54 +1,74 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
+import { PaymentsController } from "../../controllers/payments/payments.controller";
+import { body, param } from "express-validator";
 
 const router: Router = Router();
+const paymentsController = new PaymentsController();
 
 // Payment processing routes
-router.post("/stripe/create-intent", (req, res) => {
-  // TODO: Create Stripe payment intent
-  res.json({ message: "Create Stripe payment intent endpoint - TODO" });
-});
+router.post(
+  "/create-intent",
+  [
+    body("orderId").isUUID().withMessage("Valid order ID is required"),
+    body("amount").isFloat({ min: 0 }).withMessage("Valid amount is required"),
+    body("paymentMethod")
+      .isIn(["card", "meal_voucher", "cash"])
+      .withMessage("Valid payment method is required"),
+  ],
+  (req: Request, res: Response) => paymentsController.createPaymentIntent(req, res)
+);
 
-router.post("/stripe/webhook", (req, res) => {
-  // TODO: Handle Stripe webhooks
-  res.json({ message: "Stripe webhook endpoint - TODO" });
-});
+router.post(
+  "/confirm",
+  [
+    body("paymentId").isUUID().withMessage("Valid payment ID is required"),
+    body("paymentIntentId").optional().isString(),
+  ],
+  (req: Request, res: Response) => paymentsController.confirmPayment(req, res)
+);
 
-// Meal voucher routes
-router.post("/meal-voucher/validate", (req, res) => {
-  // TODO: Validate meal voucher (Swile, Edenred, etc.)
-  res.json({ message: "Validate meal voucher endpoint - TODO" });
-});
+// Stripe webhook (raw body required)
+router.post("/stripe/webhook", (req: Request, res: Response) =>
+  paymentsController.handleStripeWebhook(req, res)
+);
 
-router.post("/meal-voucher/process", (req, res) => {
-  // TODO: Process meal voucher payment
-  res.json({ message: "Process meal voucher endpoint - TODO" });
-});
+// Get payments by order
+router.get("/order/:orderId", [param("orderId").isUUID()], (req: Request, res: Response) =>
+  paymentsController.getPaymentByOrderId(req, res)
+);
 
-// Cash payment routes
-router.post("/cash", (req, res) => {
-  // TODO: Mark order as cash payment
-  res.json({ message: "Cash payment endpoint - TODO" });
-});
+// Refund payment
+router.post(
+  "/refund/:paymentId",
+  [
+    param("paymentId").isUUID(),
+    body("amount").optional().isFloat({ min: 0 }),
+    body("reason").optional().isString(),
+  ],
+  (req: Request, res: Response) => paymentsController.refundPayment(req, res)
+);
 
-// Discount routes
-router.get("/discounts/store/:storeId", (req, res) => {
-  // TODO: Get discounts for store
-  res.json({ message: "Get discounts endpoint - TODO" });
-});
+// Meal voucher processing
+router.post(
+  "/meal-voucher",
+  [
+    body("orderId").isUUID().withMessage("Valid order ID is required"),
+    body("provider")
+      .isIn(["swile", "edenred", "sodexo", "apetiz", "up_dejeuner"])
+      .withMessage("Valid provider is required"),
+    body("voucherDetails").isObject(),
+  ],
+  (req: Request, res: Response) => paymentsController.processeMealVoucher(req, res)
+);
 
-router.post("/discounts", (req, res) => {
-  // TODO: Create discount (store owner only)
-  res.json({ message: "Create discount endpoint - TODO" });
-});
-
-router.put("/discounts/:id", (req, res) => {
-  // TODO: Update discount (store owner only)
-  res.json({ message: "Update discount endpoint - TODO" });
-});
-
-router.delete("/discounts/:id", (req, res) => {
-  // TODO: Delete discount (store owner only)
-  res.json({ message: "Delete discount endpoint - TODO" });
-});
+// Cash payment
+router.post(
+  "/cash",
+  [
+    body("orderId").isUUID().withMessage("Valid order ID is required"),
+    body("amount").isFloat({ min: 0 }).withMessage("Valid amount is required"),
+  ],
+  (req: Request, res: Response) => paymentsController.markCashPayment(req, res)
+);
 
 export default router;
