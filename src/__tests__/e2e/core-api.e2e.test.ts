@@ -1,12 +1,6 @@
 import request from "supertest";
-import { AppDataSource } from "../../config/database";
 import { TestDataSource } from "../../config/test-database";
-import { User } from "../../entities/auth/User";
-import { Store } from "../../entities/stores/Store";
-import { Menu } from "../../entities/menus/Menu";
-import { MenuItem } from "../../entities/menus/MenuItem";
-import { Ingredient } from "../../entities/menus/Ingredient";
-import { Order, OrderStatus } from "../../entities/orders/Order";
+import { OrderStatus } from "../../entities/orders/Order";
 import { startTestServer, stopTestServer } from "../test-server";
 
 let app: any;

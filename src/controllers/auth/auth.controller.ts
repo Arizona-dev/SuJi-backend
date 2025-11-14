@@ -1,6 +1,7 @@
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 import { validationResult } from "express-validator";
 import { DataSource } from "typeorm";
+import passport from "passport";
 import {
   AuthService,
   LoginRequest,
@@ -306,7 +307,7 @@ export class AuthController {
 
       const registrationData: StoreOwnerRegisterRequest = {
         ...req.body,
-        ipAddress: req.ip || req.socket?.remoteAddress || "unknown",
+        ipAddress: req.ip || "unknown",
         userAgent: req.get("User-Agent") || "unknown",
       };
 
@@ -330,31 +331,79 @@ export class AuthController {
     }
   }
 
-  async googleOAuth(req: Request, res: Response): Promise<void> {
-    try {
-      // TODO: Implement Google OAuth
-      res.status(501).json({
-        message: "Google OAuth not implemented yet",
-      });
-    } catch (error) {
-      logger.error("Google OAuth error:", error);
-      res.status(500).json({
-        message: "OAuth failed",
-      });
+  googleOAuth(req: Request, res: Response, next: NextFunction): void {
+    // Check if Google strategy is configured
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      res.status(501).json({ message: "Google OAuth not implemented yet" });
+      return;
     }
+    
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+    })(req, res, next);
   }
 
-  async appleOAuth(req: Request, res: Response): Promise<void> {
-    try {
-      // TODO: Implement Apple OAuth
-      res.status(501).json({
-        message: "Apple OAuth not implemented yet",
-      });
-    } catch (error) {
-      logger.error("Apple OAuth error:", error);
-      res.status(500).json({
-        message: "OAuth failed",
-      });
+  async googleOAuthCallback(req: Request, res: Response, next: NextFunction): Promise<void> {
+    passport.authenticate("google", { session: false }, async (err: any, user: any) => {
+      try {
+        if (err || !user) {
+          logger.error("Google OAuth callback error:", err);
+          return res.redirect(
+            `${process.env.FRONTEND_URL}/auth/error?message=OAuth failed`
+          );
+        }
+
+        // Generate JWT token
+        const token = await this.authService.generateToken(user);
+        
+        // Redirect to frontend with token
+        res.redirect(
+          `${process.env.FRONTEND_URL}/auth/success?token=${token}&type=${user.role}`
+        );
+      } catch (error) {
+        logger.error("Google OAuth callback error:", error);
+        res.redirect(
+          `${process.env.FRONTEND_URL}/auth/error?message=OAuth failed`
+        );
+      }
+    })(req, res, next);
+  }
+
+  appleOAuth(req: Request, res: Response, next: NextFunction): void {
+    // Check if Apple strategy is configured
+    if (!process.env.APPLE_CLIENT_ID || !process.env.APPLE_PRIVATE_KEY) {
+      res.status(501).json({ message: "Apple OAuth not implemented yet" });
+      return;
     }
+    
+    passport.authenticate("apple", {
+      scope: ["name", "email"],
+    })(req, res, next);
+  }
+
+  async appleOAuthCallback(req: Request, res: Response, next: NextFunction): Promise<void> {
+    passport.authenticate("apple", { session: false }, async (err: any, user: any) => {
+      try {
+        if (err || !user) {
+          logger.error("Apple OAuth callback error:", err);
+          return res.redirect(
+            `${process.env.FRONTEND_URL}/auth/error?message=OAuth failed`
+          );
+        }
+
+        // Generate JWT token
+        const token = await this.authService.generateToken(user);
+        
+        // Redirect to frontend with token
+        res.redirect(
+          `${process.env.FRONTEND_URL}/auth/success?token=${token}&type=${user.role}`
+        );
+      } catch (error) {
+        logger.error("Apple OAuth callback error:", error);
+        res.redirect(
+          `${process.env.FRONTEND_URL}/auth/error?message=OAuth failed`
+        );
+      }
+    })(req, res, next);
   }
 }

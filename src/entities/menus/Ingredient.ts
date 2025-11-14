@@ -20,6 +20,9 @@ export class Ingredient {
   @Column({ default: true })
   isActive!: boolean;
 
+  @Column({ default: true })
+  isAvailable!: boolean;
+
   @Column({ type: "timestamp", nullable: true })
   disabledUntil?: Date;
 

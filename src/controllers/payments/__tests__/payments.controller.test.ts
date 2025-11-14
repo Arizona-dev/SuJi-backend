@@ -2,9 +2,15 @@ import { Request, Response } from "express";
 import { PaymentsController } from "../payments.controller";
 import { PaymentsService } from "../../../services/payment/payments.service";
 import { PaymentStatus, PaymentMethod } from "../../../entities/payments/Payment";
+import { validationResult } from "express-validator";
 
 jest.mock("../../../services/payment/payments.service");
 jest.mock("../../../utils/logger");
+jest.mock("express-validator", () => ({
+  validationResult: jest.fn(),
+  body: jest.fn(),
+  param: jest.fn(),
+}));
 
 describe("PaymentsController", () => {
   let paymentsController: PaymentsController;
@@ -64,6 +70,12 @@ describe("PaymentsController", () => {
         paymentMethod: "card",
       };
 
+      // Mock validation result as empty (no errors)
+      (validationResult as unknown as jest.Mock).mockReturnValue({
+        isEmpty: () => true,
+        array: () => [],
+      });
+
       mockPaymentsService.createPaymentIntent.mockResolvedValue(mockResult);
 
       await paymentsController.createPaymentIntent(
@@ -90,7 +102,7 @@ describe("PaymentsController", () => {
         paymentMethod: "invalid",
       };
 
-      const validationResult = {
+      const mockValidationResult = {
         isEmpty: () => false,
         array: () => [
           { msg: "Valid order ID is required" },
@@ -99,7 +111,7 @@ describe("PaymentsController", () => {
         ],
       };
 
-      jest.spyOn(require("express-validator"), "validationResult").mockReturnValue(validationResult);
+      (validationResult as unknown as jest.Mock).mockReturnValue(mockValidationResult);
 
       await paymentsController.createPaymentIntent(
         mockRequest as Request,
@@ -109,7 +121,7 @@ describe("PaymentsController", () => {
       expect(mockStatus).toHaveBeenCalledWith(400);
       expect(mockJson).toHaveBeenCalledWith({
         message: "Validation failed",
-        errors: validationResult.array(),
+        errors: mockValidationResult.array(),
       });
     });
 
@@ -119,6 +131,12 @@ describe("PaymentsController", () => {
         amount: 100,
         paymentMethod: "card",
       };
+
+      // Mock validation result as empty (no errors)
+      (validationResult as unknown as jest.Mock).mockReturnValue({
+        isEmpty: () => true,
+        array: () => [],
+      });
 
       mockPaymentsService.createPaymentIntent.mockRejectedValue(
         new Error("Stripe API error")
@@ -151,6 +169,12 @@ describe("PaymentsController", () => {
         paymentIntentId: "pi_123",
       };
 
+      // Mock validation result as empty (no errors)
+      (validationResult as unknown as jest.Mock).mockReturnValue({
+        isEmpty: () => true,
+        array: () => [],
+      });
+
       mockPaymentsService.confirmPayment.mockResolvedValue(mockPayment as any);
 
       await paymentsController.confirmPayment(
@@ -173,6 +197,12 @@ describe("PaymentsController", () => {
         paymentId: "payment-999",
         paymentIntentId: "pi_123",
       };
+
+      // Mock validation result as empty (no errors)
+      (validationResult as unknown as jest.Mock).mockReturnValue({
+        isEmpty: () => true,
+        array: () => [],
+      });
 
       mockPaymentsService.confirmPayment.mockRejectedValue(
         new Error("Payment not found")
@@ -346,6 +376,12 @@ describe("PaymentsController", () => {
         orderId: "order-123",
         amount: 30,
       };
+
+      // Mock validation result as empty (no errors)
+      (validationResult as unknown as jest.Mock).mockReturnValue({
+        isEmpty: () => true,
+        array: () => [],
+      });
 
       mockPaymentsService.markCashPayment.mockResolvedValue(mockPayment as any);
 

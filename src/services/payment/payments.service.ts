@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { Payment, PaymentStatus, PaymentMethod } from "../../entities/payments/Payment";
 import { Order } from "../../entities/orders/Order";
 import { logger } from "../../utils/logger";
+import { MealVoucherFactory, MealVoucherProviderType } from "./meal-vouchers/MealVoucherFactory";
 
 export interface CreatePaymentIntentRequest {
   orderId: string;
@@ -12,7 +13,7 @@ export interface CreatePaymentIntentRequest {
 
 export interface ProcessMealVoucherRequest {
   orderId: string;
-  provider: "swile" | "edenred" | "sodexo" | "apetiz" | "up_dejeuner";
+  provider: MealVoucherProviderType;
   voucherDetails: any;
 }
 
@@ -24,7 +25,12 @@ export class PaymentsService {
   constructor(dataSource: DataSource) {
     this.paymentRepository = dataSource.getRepository(Payment);
     this.orderRepository = dataSource.getRepository(Order);
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+    
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is required");
+    }
+    this.stripe = new Stripe(stripeKey);
   }
 
   async createPaymentIntent(
@@ -265,7 +271,7 @@ export class PaymentsService {
 
   async processMealVoucher(
     orderId: string,
-    provider: string,
+    provider: MealVoucherProviderType,
     voucherDetails: any
   ): Promise<Payment> {
     try {
@@ -277,6 +283,14 @@ export class PaymentsService {
         throw new Error("Order not found");
       }
 
+      // Get the meal voucher provider
+      const voucherProvider = MealVoucherFactory.getProvider(provider);
+
+      if (!voucherProvider.isConfigured()) {
+        throw new Error(`${provider} provider is not configured. Please add API credentials.`);
+      }
+
+      // Create pending payment record
       const payment = this.paymentRepository.create({
         order,
         orderId: order.id,
@@ -291,30 +305,37 @@ export class PaymentsService {
 
       await this.paymentRepository.save(payment);
 
-      switch (provider) {
-        case "swile":
-          break;
-        case "edenred":
-          break;
-        case "sodexo":
-          break;
-        case "apetiz":
-          break;
-        case "up_dejeuner":
-          break;
-        default:
-          logger.warn(`Unknown meal voucher provider: ${provider}`);
+      // Process payment with the provider
+      const result = await voucherProvider.processPayment({
+        orderId,
+        amount: order.totalAmount,
+        voucherCode: voucherDetails.voucherCode,
+        userIdentifier: voucherDetails.userIdentifier,
+        metadata: voucherDetails.metadata,
+      });
+
+      if (result.success) {
+        payment.status = PaymentStatus.COMPLETED;
+        payment.externalId = result.transactionId;
+        payment.metadata = {
+          ...payment.metadata,
+          paidAt: new Date(),
+          transactionId: result.transactionId,
+          providerResponse: result.metadata,
+        };
+
+        order.status = "confirmed" as any;
+        await this.orderRepository.save(order);
+      } else {
+        payment.status = PaymentStatus.FAILED;
+        payment.metadata = {
+          ...payment.metadata,
+          failureReason: result.message,
+          providerResponse: result.metadata,
+        };
       }
 
-      payment.status = PaymentStatus.COMPLETED;
-      payment.metadata = {
-        ...payment.metadata,
-        paidAt: new Date(),
-      };
       await this.paymentRepository.save(payment);
-
-      order.status = "confirmed" as any;
-      await this.orderRepository.save(order);
 
       return payment;
     } catch (error) {

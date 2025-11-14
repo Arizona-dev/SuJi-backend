@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { PaymentsService } from "../payments.service";
 import { Payment, PaymentStatus, PaymentMethod } from "../../../entities/payments/Payment";
+import { MealVoucherFactory } from "../meal-vouchers/MealVoucherFactory";
 
 // Mock dependencies
 const mockPaymentRepository = {
@@ -45,6 +46,9 @@ jest.mock("stripe", () => {
     },
   }));
 });
+
+// Mock MealVoucherFactory
+jest.mock("../meal-vouchers/MealVoucherFactory");
 
 describe("PaymentsService Unit Tests", () => {
   let service: PaymentsService;
@@ -212,7 +216,24 @@ describe("PaymentsService Unit Tests", () => {
   });
 
   describe("processMealVoucher", () => {
-    it("should process a Swile meal voucher", async () => {
+    let mockVoucherProvider: any;
+
+    beforeEach(() => {
+      mockVoucherProvider = {
+        isConfigured: jest.fn().mockReturnValue(true),
+        processPayment: jest.fn().mockResolvedValue({
+          success: true,
+          transactionId: "voucher_tx_123",
+          amount: 15,
+          status: "completed",
+          metadata: { provider: "swile" },
+        }),
+      };
+
+      (MealVoucherFactory.getProvider as jest.Mock).mockReturnValue(mockVoucherProvider);
+    });
+
+    it("should process a Swile meal voucher successfully", async () => {
       const mockOrder = { id: "order-1", totalAmount: 15, status: "pending" };
       const mockPayment = {
         id: "payment-3",
@@ -225,51 +246,102 @@ describe("PaymentsService Unit Tests", () => {
 
       mockOrderRepository.findOne.mockResolvedValue(mockOrder);
       mockPaymentRepository.create.mockReturnValue(mockPayment);
-      mockPaymentRepository.save
-        .mockResolvedValueOnce(mockPayment)
-        .mockResolvedValueOnce({ ...mockPayment, status: PaymentStatus.COMPLETED });
+      mockPaymentRepository.save.mockImplementation((p) => Promise.resolve(p));
       mockOrderRepository.save.mockResolvedValue({ ...mockOrder, status: "confirmed" });
 
       const result = await service.processMealVoucher(
         "order-1",
         "swile",
-        { voucherId: "voucher_123" }
+        { voucherCode: "VOUCHER123", userIdentifier: "user@example.com" }
       );
 
-      expect(result.method).toBe(PaymentMethod.SWILE);
+      expect(MealVoucherFactory.getProvider).toHaveBeenCalledWith("swile");
+      expect(mockVoucherProvider.isConfigured).toHaveBeenCalled();
+      expect(mockVoucherProvider.processPayment).toHaveBeenCalledWith({
+        orderId: "order-1",
+        amount: 15,
+        voucherCode: "VOUCHER123",
+        userIdentifier: "user@example.com",
+        metadata: undefined,
+      });
       expect(result.status).toBe(PaymentStatus.COMPLETED);
+      expect(result.externalId).toBe("voucher_tx_123");
+    });
+
+    it("should handle meal voucher payment failure", async () => {
+      mockVoucherProvider.processPayment.mockResolvedValue({
+        success: false,
+        transactionId: "",
+        amount: 15,
+        status: "failed",
+        message: "Insufficient balance",
+      });
+
+      const mockOrder = { id: "order-1", totalAmount: 15, status: "pending" };
+      const mockPayment = {
+        id: "payment-3",
+        method: PaymentMethod.SWILE,
+        status: PaymentStatus.PENDING,
+        metadata: {},
+      };
+
+      mockOrderRepository.findOne.mockResolvedValue(mockOrder);
+      mockPaymentRepository.create.mockReturnValue(mockPayment);
+      mockPaymentRepository.save.mockImplementation((p) => Promise.resolve(p));
+
+      const result = await service.processMealVoucher(
+        "order-1",
+        "swile",
+        { voucherCode: "INVALID" }
+      );
+
+      expect(result.status).toBe(PaymentStatus.FAILED);
+      expect(result.metadata?.failureReason).toBe("Insufficient balance");
+    });
+
+    it("should throw error when provider is not configured", async () => {
+      mockVoucherProvider.isConfigured.mockReturnValue(false);
+
+      const mockOrder = { id: "order-1", totalAmount: 15 };
+      mockOrderRepository.findOne.mockResolvedValue(mockOrder);
+
+      await expect(
+        service.processMealVoucher("order-1", "swile", {})
+      ).rejects.toThrow("swile provider is not configured");
     });
 
     it("should handle different meal voucher providers", async () => {
-      const providers = [
-        { name: "edenred", method: PaymentMethod.EDENRED },
-        { name: "sodexo", method: PaymentMethod.SODEXO },
-      ];
+      const providers = ["edenred", "sodexo", "apetiz", "up_dejeuner"];
 
       for (const provider of providers) {
-        jest.clearAllMocks();
-        
         const mockOrder = { id: "order-1", totalAmount: 20, status: "pending" };
         const mockPayment = {
-          id: `payment-${provider.name}`,
-          method: provider.method,
-          status: PaymentStatus.COMPLETED,
+          id: `payment-${provider}`,
+          status: PaymentStatus.PENDING,
           metadata: {},
         };
 
         mockOrderRepository.findOne.mockResolvedValue(mockOrder);
         mockPaymentRepository.create.mockReturnValue(mockPayment);
-        mockPaymentRepository.save.mockResolvedValue(mockPayment);
+        mockPaymentRepository.save.mockImplementation((p) => Promise.resolve(p));
         mockOrderRepository.save.mockResolvedValue(mockOrder);
 
-        const result = await service.processMealVoucher(
+        await service.processMealVoucher(
           "order-1",
-          provider.name,
-          { voucherId: `voucher_${provider.name}` }
+          provider as any,
+          { voucherCode: `VOUCHER_${provider}` }
         );
 
-        expect(result.method).toBe(provider.method);
+        expect(MealVoucherFactory.getProvider).toHaveBeenCalledWith(provider);
       }
+    });
+
+    it("should throw error if order not found", async () => {
+      mockOrderRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.processMealVoucher("order-999", "swile", {})
+      ).rejects.toThrow("Order not found");
     });
   });
 

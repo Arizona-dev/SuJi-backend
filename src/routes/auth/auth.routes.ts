@@ -313,6 +313,27 @@ router.get("/google", authController.googleOAuth.bind(authController));
 
 /**
  * @swagger
+ * /api/auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback
+ *     tags: [Authentication]
+ *     description: Callback URL for Google OAuth
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         description: Authorization code from Google
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend with token
+ *       500:
+ *         description: OAuth callback error
+ */
+router.get("/google/callback", authController.googleOAuthCallback.bind(authController));
+
+/**
+ * @swagger
  * /api/auth/apple:
  *   get:
  *     summary: Apple OAuth login
@@ -329,5 +350,33 @@ router.get("/google", authController.googleOAuth.bind(authController));
  *               $ref: '#/components/schemas/Error'
  */
 router.get("/apple", authController.appleOAuth.bind(authController));
+
+/**
+ * @swagger
+ * /api/auth/apple/callback:
+ *   post:
+ *     summary: Apple OAuth callback
+ *     tags: [Authentication]
+ *     description: Callback URL for Apple OAuth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/x-www-form-urlencoded:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 description: Authorization code from Apple
+ *               id_token:
+ *                 type: string
+ *                 description: ID token from Apple
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend with token
+ *       500:
+ *         description: OAuth callback error
+ */
+router.post("/apple/callback", authController.appleOAuthCallback.bind(authController));
 
 export default router;

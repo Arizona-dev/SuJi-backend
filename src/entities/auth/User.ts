@@ -54,6 +54,12 @@ export class User {
   @Column({ nullable: true })
   appleId?: string;
 
+  @Column({ nullable: true })
+  profilePicture?: string;
+
+  @Column({ default: false })
+  emailVerified!: boolean;
+
   @Column({ default: true })
   isActive!: boolean;
 

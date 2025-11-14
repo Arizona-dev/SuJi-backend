@@ -18,6 +18,7 @@ process.env.TEST_DB_PASSWORD = process.env.TEST_DB_PASSWORD || 'password';
 process.env.TEST_DB_NAME = process.env.TEST_DB_NAME || 'suji_test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only';
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
+process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_test-key-for-testing-only';
 
 beforeAll(async () => {
   try {

@@ -3,6 +3,7 @@ import { PaymentsService } from "../payments.service";
 import { Payment, PaymentStatus, PaymentMethod } from "../../../entities/payments/Payment";
 import { Order } from "../../../entities/orders/Order";
 import Stripe from "stripe";
+import { MealVoucherFactory } from "../meal-vouchers/MealVoucherFactory";
 
 // Mock the database configuration
 jest.mock("../../../config/database", () => ({
@@ -14,6 +15,7 @@ jest.mock("../../../config/database", () => ({
 }));
 
 jest.mock("stripe");
+jest.mock("../meal-vouchers/MealVoucherFactory");
 
 describe("PaymentsService", () => {
   let paymentsService: PaymentsService;
@@ -106,6 +108,7 @@ describe("PaymentsService", () => {
         status: PaymentStatus.PENDING,
         externalId: "pi_123",
         metadata: { clientSecret: "secret_123" },
+        order: mockOrder,
       });
       expect(result).toEqual({
         paymentId: "payment-123",
@@ -143,6 +146,7 @@ describe("PaymentsService", () => {
         amount: 50,
         method: PaymentMethod.CASH,
         status: PaymentStatus.PENDING,
+        order: mockOrder,
       });
       expect(result).toEqual({
         paymentId: "payment-456",
@@ -329,6 +333,13 @@ describe("PaymentsService", () => {
         metadata: {},
       };
 
+      // Mock the meal voucher provider
+      const mockProvider = {
+        isConfigured: jest.fn().mockReturnValue(true),
+        processPayment: jest.fn().mockResolvedValue({ success: true, transactionId: "txn_123" }),
+      };
+      (MealVoucherFactory.getProvider as jest.Mock).mockReturnValue(mockProvider);
+
       mockOrderRepository.findOne.mockResolvedValue(mockOrder);
       mockPaymentRepository.create.mockReturnValue(mockPayment);
       mockPaymentRepository.save
@@ -357,6 +368,7 @@ describe("PaymentsService", () => {
           provider: "swile",
           voucherDetails: { voucherId: "voucher_123" },
         },
+        order: expect.objectContaining({ id: "order-123" }),
       });
       expect(result.status).toBe(PaymentStatus.COMPLETED);
       expect(result.method).toBe(PaymentMethod.SWILE);
@@ -369,6 +381,13 @@ describe("PaymentsService", () => {
         { name: "apetiz", method: PaymentMethod.APETIZ },
         { name: "up_dejeuner", method: PaymentMethod.UP_DEJEUNER },
       ];
+
+      // Mock the meal voucher provider
+      const mockProvider = {
+        isConfigured: jest.fn().mockReturnValue(true),
+        processPayment: jest.fn().mockResolvedValue({ success: true, transactionId: "txn_123" }),
+      };
+      (MealVoucherFactory.getProvider as jest.Mock).mockReturnValue(mockProvider);
 
       for (const provider of providers) {
         const mockOrder = {
@@ -398,7 +417,7 @@ describe("PaymentsService", () => {
 
         const result = await paymentsService.processMealVoucher(
           mockOrder.id,
-          provider.name,
+          provider.name as any,
           { voucherId: `voucher_${provider.name}` }
         );
 
@@ -429,6 +448,7 @@ describe("PaymentsService", () => {
         amount: 30,
         method: PaymentMethod.CASH,
         status: PaymentStatus.PENDING,
+        order: mockOrder,
       });
       expect(result).toEqual(mockPayment);
     });

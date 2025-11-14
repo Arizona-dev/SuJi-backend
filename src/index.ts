@@ -1,14 +1,18 @@
-import express from "express";
+import "dotenv/config";
+import express, { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
+import passport from "passport";
 import "reflect-metadata";
 
 import { AppDataSource } from "./config/database";
 import { logger } from "./utils/logger";
 import { errorHandler } from "./middlewares/errorHandler";
 import { swaggerUi, swaggerSpec } from "./config/swagger";
+import { initializePassport } from "./config/passport";
+import { IngredientReactivationService } from "./services/cron/ingredient-reactivation.service";
 
 // Import routes
 import authRoutes from "./routes/auth/auth.routes";
@@ -17,7 +21,7 @@ import menuRoutes from "./routes/menus/menus.routes";
 import orderRoutes from "./routes/orders/orders.routes";
 import paymentRoutes from "./routes/payments/payments.routes";
 
-const app = express();
+const app: Application = express();
 const PORT = process.env.PORT || 3000;
 
 // Rate limiting
@@ -42,6 +46,9 @@ app.use(compression());
 app.use(limiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Initialize Passport
+app.use(passport.initialize());
 
 // Health check
 app.get("/health", (req, res) => {
@@ -69,6 +76,9 @@ app.use("*", (req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
+// Global ingredient reactivation service instance
+let ingredientReactivationService: IngredientReactivationService;
+
 // Start server function (only called when not in test environment)
 export async function startServer() {
   try {
@@ -76,9 +86,43 @@ export async function startServer() {
     await AppDataSource.initialize();
     logger.info("Database connection established successfully");
 
-    app.listen(PORT, () => {
+    // Initialize Passport configuration
+    initializePassport();
+    logger.info("Passport OAuth strategies initialized");
+
+    // Initialize ingredient reactivation cron jobs
+    ingredientReactivationService = new IngredientReactivationService();
+    await ingredientReactivationService.initialize();
+    logger.info("Ingredient reactivation cron jobs initialized");
+
+    const server = app.listen(PORT, () => {
       logger.info(`Server is running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+
+    // Graceful shutdown
+    process.on("SIGTERM", async () => {
+      logger.info("SIGTERM signal received: closing HTTP server");
+      server.close(async () => {
+        logger.info("HTTP server closed");
+        if (ingredientReactivationService) {
+          await ingredientReactivationService.shutdown();
+        }
+        await AppDataSource.destroy();
+        process.exit(0);
+      });
+    });
+
+    process.on("SIGINT", async () => {
+      logger.info("SIGINT signal received: closing HTTP server");
+      server.close(async () => {
+        logger.info("HTTP server closed");
+        if (ingredientReactivationService) {
+          await ingredientReactivationService.shutdown();
+        }
+        await AppDataSource.destroy();
+        process.exit(0);
+      });
     });
   } catch (error) {
     logger.error("Error starting server:", error);
