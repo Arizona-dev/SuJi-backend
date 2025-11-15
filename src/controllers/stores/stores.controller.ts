@@ -151,27 +151,27 @@ export class StoresController {
     }
   }
 
-  async toggleHolidayMode(req: Request, res: Response): Promise<void> {
+  async toggleTemporaryClosure(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { holidayMessage } = req.body;
+      const { closureMessage } = req.body;
 
-      const store = await this.storesService.toggleHolidayMode(
+      const store = await this.storesService.toggleTemporaryClosure(
         id,
-        holidayMessage
+        closureMessage
       );
 
       res.json({
-        message: `Holiday mode ${
-          store.isHoliday ? "enabled" : "disabled"
+        message: `Temporary closure ${
+          store.isTemporarilyClosed ? "enabled" : "disabled"
         } successfully`,
         data: {
-          isHoliday: store.isHoliday,
-          holidayMessage: store.holidayMessage,
+          isTemporarilyClosed: store.isTemporarilyClosed,
+          closureMessage: store.closureMessage,
         },
       });
     } catch (error) {
-      logger.error("Toggle holiday mode error:", error);
+      logger.error("Toggle temporary closure error:", error);
 
       if (error instanceof Error && error.message === "Store not found") {
         res.status(404).json({
@@ -181,7 +181,7 @@ export class StoresController {
       }
 
       res.status(500).json({
-        message: "Failed to toggle holiday mode",
+        message: "Failed to toggle temporary closure",
         error: error instanceof Error ? error.message : "Internal server error",
       });
     }

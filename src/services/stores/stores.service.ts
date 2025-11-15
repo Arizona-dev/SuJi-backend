@@ -22,6 +22,12 @@ export interface UpdateStoreRequest {
   email?: string;
   openingHours?: Record<string, { open: string; close: string }>;
   timezone?: string;
+  legalAddress?: {
+    street: string;
+    city: string;
+    postalCode: string;
+    country: string;
+  };
 }
 
 export class StoresService {
@@ -87,8 +93,9 @@ export class StoresService {
         "email",
         "openingHours",
         "timezone",
-        "isHoliday",
-        "holidayMessage",
+        "isTemporarilyClosed",
+        "closureMessage",
+        "legalAddress",
         "createdAt",
       ],
     });
@@ -106,8 +113,9 @@ export class StoresService {
         "email",
         "openingHours",
         "timezone",
-        "isHoliday",
-        "holidayMessage",
+        "isTemporarilyClosed",
+        "closureMessage",
+        "legalAddress",
         "createdAt",
       ],
     });
@@ -126,8 +134,9 @@ export class StoresService {
         "email",
         "openingHours",
         "timezone",
-        "isHoliday",
-        "holidayMessage",
+        "isTemporarilyClosed",
+        "closureMessage",
+        "legalAddress",
         "isActive",
         "createdAt",
       ],
@@ -153,7 +162,7 @@ export class StoresService {
     return updatedStore;
   }
 
-  async toggleHolidayMode(id: string, holidayMessage?: string): Promise<Store> {
+  async toggleTemporaryClosure(id: string, closureMessage?: string): Promise<Store> {
     const store = await this.storeRepository.findOne({
       where: { id, isActive: true },
     });
@@ -162,14 +171,15 @@ export class StoresService {
       throw new Error("Store not found");
     }
 
-    store.isHoliday = !store.isHoliday;
-    store.holidayMessage = store.isHoliday ? holidayMessage : undefined;
+    store.isTemporarilyClosed = !store.isTemporarilyClosed;
+    // Use null instead of undefined to properly clear the database column
+    store.closureMessage = store.isTemporarilyClosed ? (closureMessage || null) : null;
 
     const updatedStore = await this.storeRepository.save(store);
 
     logger.info(
-      `Holiday mode ${
-        store.isHoliday ? "enabled" : "disabled"
+      `Temporary closure ${
+        store.isTemporarilyClosed ? "enabled" : "disabled"
       } for store: ${id}`
     );
 

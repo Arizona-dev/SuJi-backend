@@ -5,6 +5,7 @@ import { AppDataSource } from "../../config/database";
 import { User, UserRole, UserType } from "../../entities/auth/User";
 import { Store } from "../../entities/stores/Store";
 import { AuditService } from "../audit/audit.service";
+import { InseeService } from "../insee/insee.service";
 import { logger } from "../../utils/logger";
 import { createSlug } from "../../utils/slug";
 
@@ -73,11 +74,13 @@ export class AuthService {
   private userRepository: Repository<User>;
   private storeRepository: Repository<Store>;
   private auditService: AuditService;
+  private inseeService: InseeService;
 
   constructor(dataSource: DataSource = AppDataSource) {
     this.userRepository = dataSource.getRepository(User);
     this.storeRepository = dataSource.getRepository(Store);
     this.auditService = new AuditService(dataSource);
+    this.inseeService = new InseeService();
   }
 
   async login(credentials: LoginRequest): Promise<AuthResponse> {
@@ -368,6 +371,20 @@ export class AuthService {
       throw new Error("User not found");
     }
 
+    // Fetch business information from INSEE API using SIRET
+    let legalBusinessName: string | undefined;
+    try {
+      const inseeData = await this.inseeService.fetchSiretData(data.siret);
+      if (inseeData) {
+        legalBusinessName = inseeData.name;
+        logger.info(`Fetched legal business name from INSEE: ${legalBusinessName}`);
+      }
+    } catch (error) {
+      // Log the error but don't fail the onboarding
+      logger.warn(`Failed to fetch INSEE data for SIRET ${data.siret}:`, error);
+      // legalBusinessName will remain undefined
+    }
+
     // Update user with merchant data
     user.ownerPhone = data.phoneNumber;
     user.businessAddress = data.storeAddress;
@@ -386,11 +403,12 @@ export class AuthService {
 
     const savedUser = await this.userRepository.save(user);
 
-    // Create store
+    // Create store with legal business name from INSEE
     const store = this.storeRepository.create({
       ownerId: userId,
       name: data.storeName,
       slug: createSlug(data.storeName),
+      legalBusinessName, // Set from INSEE API
       legalAddress: data.storeAddress,
       address: `${data.storeAddress.street}, ${data.storeAddress.postalCode} ${data.storeAddress.city}`,
       phone: data.phoneNumber,
@@ -409,7 +427,7 @@ export class AuthService {
 
     const savedStore = await this.storeRepository.save(store);
 
-    logger.info(`OAuth user ${savedUser.email} completed onboarding with store: ${savedStore.name}`);
+    logger.info(`OAuth user ${savedUser.email} completed onboarding with store: ${savedStore.name}${legalBusinessName ? ` (Legal: ${legalBusinessName})` : ''}`);
 
     return {
       user: {

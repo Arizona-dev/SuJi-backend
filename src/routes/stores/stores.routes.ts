@@ -195,7 +195,32 @@ router.post(
     body("name").trim().isLength({ min: 1, max: 100 }),
     body("description").optional().trim().isLength({ max: 500 }),
     body("address").optional().trim().isLength({ max: 200 }),
-    body("phone").optional().trim().isLength({ max: 20 }),
+    body("phone")
+      .optional()
+      .trim()
+      .isLength({ max: 20 })
+      .custom((value) => {
+        if (!value) return true; // Allow empty values
+
+        // Remove all spaces, dashes, dots, and parentheses
+        const cleanedPhone = value.replace(/[\s\-\.\(\)]/g, '');
+
+        // Check for valid French phone number patterns:
+        // - +33XXXXXXXXX (international format, 12 chars)
+        // - 0033XXXXXXXXX (international format with 00, 13 chars)
+        // - 0XXXXXXXXX (national format, 10 chars)
+        const internationalPattern = /^\+33[1-9]\d{8}$/;
+        const internationalAltPattern = /^0033[1-9]\d{8}$/;
+        const nationalPattern = /^0[1-9]\d{8}$/;
+
+        if (!internationalPattern.test(cleanedPhone) &&
+            !internationalAltPattern.test(cleanedPhone) &&
+            !nationalPattern.test(cleanedPhone)) {
+          throw new Error('Format invalide. Utilisez +33 6 12 34 56 78 ou 06 12 34 56 78');
+        }
+
+        return true;
+      }),
     body("email").optional().isEmail().normalizeEmail(),
     body("openingHours").optional().isObject(),
     body("timezone").optional().isString(),
@@ -282,19 +307,53 @@ router.put(
     body("name").optional().trim().isLength({ min: 1, max: 100 }),
     body("description").optional().trim().isLength({ max: 500 }),
     body("address").optional().trim().isLength({ max: 200 }),
-    body("phone").optional().trim().isLength({ max: 20 }),
+    body("phone")
+      .optional()
+      .trim()
+      .isLength({ max: 20 })
+      .custom((value) => {
+        if (!value) return true; // Allow empty values
+
+        // Remove all spaces, dashes, dots, and parentheses
+        const cleanedPhone = value.replace(/[\s\-\.\(\)]/g, '');
+
+        // Check for valid French phone number patterns:
+        // - +33XXXXXXXXX (international format, 12 chars)
+        // - 0033XXXXXXXXX (international format with 00, 13 chars)
+        // - 0XXXXXXXXX (national format, 10 chars)
+        const internationalPattern = /^\+33[1-9]\d{8}$/;
+        const internationalAltPattern = /^0033[1-9]\d{8}$/;
+        const nationalPattern = /^0[1-9]\d{8}$/;
+
+        if (!internationalPattern.test(cleanedPhone) &&
+            !internationalAltPattern.test(cleanedPhone) &&
+            !nationalPattern.test(cleanedPhone)) {
+          throw new Error('Format invalide. Utilisez +33 6 12 34 56 78 ou 06 12 34 56 78');
+        }
+
+        return true;
+      }),
     body("email").optional().isEmail().normalizeEmail(),
     body("openingHours").optional().isObject(),
     body("timezone").optional().isString(),
+    body("legalAddress").optional().isObject(),
+    body("legalAddress.street").optional().trim().isLength({ min: 1, max: 200 }),
+    body("legalAddress.city").optional().trim().isLength({ min: 1, max: 100 }),
+    body("legalAddress.postalCode")
+      .optional()
+      .trim()
+      .matches(/^\d{5}$/)
+      .withMessage("Code postal invalide (doit être 5 chiffres)"),
+    body("legalAddress.country").optional().trim().isLength({ min: 1, max: 100 }),
   ],
   storesController.updateStore.bind(storesController)
 );
 
 /**
  * @swagger
- * /api/stores/{id}/holiday:
+ * /api/stores/{id}/closure:
  *   put:
- *     summary: Toggle holiday mode for a store
+ *     summary: Toggle temporary closure for a store
  *     tags: [Stores]
  *     parameters:
  *       - in: path
@@ -309,13 +368,13 @@ router.put(
  *           schema:
  *             type: object
  *             properties:
- *               holidayMessage:
+ *               closureMessage:
  *                 type: string
  *                 maxLength: 200
- *                 description: Optional message to display when store is on holiday
+ *                 description: Optional message to display when store is temporarily closed (holidays, maintenance, etc.)
  *     responses:
  *       200:
- *         description: Holiday mode toggled successfully
+ *         description: Temporary closure toggled successfully
  *         content:
  *           application/json:
  *             schema:
@@ -326,9 +385,9 @@ router.put(
  *                 data:
  *                   type: object
  *                   properties:
- *                     isHoliday:
+ *                     isTemporarilyClosed:
  *                       type: boolean
- *                     holidayMessage:
+ *                     closureMessage:
  *                       type: string
  *                       nullable: true
  *       404:
@@ -345,9 +404,9 @@ router.put(
  *               $ref: '#/components/schemas/Error'
  */
 router.put(
-  "/:id/holiday",
-  [body("holidayMessage").optional().trim().isLength({ max: 200 })],
-  storesController.toggleHolidayMode.bind(storesController)
+  "/:id/closure",
+  [body("closureMessage").optional().trim().isLength({ max: 200 })],
+  storesController.toggleTemporaryClosure.bind(storesController)
 );
 
 /**

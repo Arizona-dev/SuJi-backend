@@ -43,16 +43,16 @@ export class Store {
   email?: string;
 
   @Column({ type: "json", nullable: true })
-  openingHours?: Record<string, { open: string; close: string }>;
+  openingHours?: Record<string, { open: string; close: string; closed?: boolean }[] | { open: string; close: string; closed?: boolean }>;
 
   @Column({ nullable: true })
   timezone?: string;
 
   @Column({ default: false })
-  isHoliday!: boolean;
+  isTemporarilyClosed!: boolean;
 
-  @Column({ nullable: true })
-  holidayMessage?: string;
+  @Column({ type: 'text', nullable: true })
+  closureMessage?: string | null;
 
   @Column({ default: true })
   isActive!: boolean;
