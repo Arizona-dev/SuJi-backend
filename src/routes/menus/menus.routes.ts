@@ -218,7 +218,104 @@ router.put(
  */
 router.delete("/:id", menusController.deleteMenu.bind(menusController));
 
-// Menu Items routes
+// Frontend-compatible Menu Items routes (must come before /items routes to match correctly)
+
+router.post(
+  "/:menuId/items",
+  [
+    body("name").trim().isLength({ min: 1, max: 100 }),
+    body("description").optional().trim(),
+    body("price").isFloat({ min: 0 }),
+    body("categoryId").optional().isUUID(),
+    body("imageUrl").optional().trim(),
+    body("isAvailable").optional().isBoolean(),
+  ],
+  menusController.createMenuItem.bind(menusController)
+);
+
+router.put(
+  "/:menuId/items/:itemId",
+  [
+    body("name").optional().trim().isLength({ min: 1, max: 100 }),
+    body("description").optional().trim(),
+    body("price").optional().isFloat({ min: 0 }),
+    body("categoryId").optional().isUUID(),
+    body("imageUrl").optional().trim(),
+    body("isAvailable").optional().isBoolean(),
+  ],
+  menusController.updateMenuItem.bind(menusController)
+);
+
+router.delete(
+  "/:menuId/items/:itemId",
+  menusController.deleteMenuItem.bind(menusController)
+);
+
+// Bulk operations on menu items
+router.put(
+  "/:menuId/items/bulk",
+  [
+    body("itemIds").isArray(),
+    body("itemIds.*").isUUID(),
+    body("updates").isObject(),
+    body("updates.isAvailable").optional().isBoolean(),
+    body("updates.categoryId").optional().isUUID(),
+  ],
+  menusController.bulkUpdateMenuItems.bind(menusController)
+);
+
+router.delete(
+  "/:menuId/items/bulk",
+  [
+    body("itemIds").isArray(),
+    body("itemIds.*").isUUID(),
+  ],
+  menusController.bulkDeleteMenuItems.bind(menusController)
+);
+
+// Category routes
+
+router.get(
+  "/:menuId/categories",
+  menusController.getCategoriesForMenu.bind(menusController)
+);
+
+router.post(
+  "/:menuId/categories",
+  [
+    body("name").trim().isLength({ min: 1, max: 100 }),
+    body("description").optional().trim(),
+    body("position").optional().isInt({ min: 0 }),
+  ],
+  menusController.createCategory.bind(menusController)
+);
+
+router.put(
+  "/categories/:id",
+  [
+    body("name").optional().trim().isLength({ min: 1, max: 100 }),
+    body("description").optional().trim(),
+    body("position").optional().isInt({ min: 0 }),
+  ],
+  menusController.updateCategory.bind(menusController)
+);
+
+router.delete(
+  "/categories/:id",
+  menusController.deleteCategory.bind(menusController)
+);
+
+router.put(
+  "/:menuId/categories/positions",
+  [
+    body("positions").isArray(),
+    body("positions.*.id").isUUID(),
+    body("positions.*.position").isInt({ min: 0 }),
+  ],
+  menusController.updateCategoryPositions.bind(menusController)
+);
+
+// Legacy Menu Items routes (for backward compatibility)
 
 /**
  * @swagger

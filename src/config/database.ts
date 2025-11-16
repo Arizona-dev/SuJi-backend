@@ -3,12 +3,14 @@ import { User } from "../entities/auth/User";
 import { Store } from "../entities/stores/Store";
 import { Menu } from "../entities/menus/Menu";
 import { MenuItem } from "../entities/menus/MenuItem";
+import { Category } from "../entities/menus/Category";
 import { Ingredient } from "../entities/menus/Ingredient";
 import { Order } from "../entities/orders/Order";
 import { OrderItem } from "../entities/orders/OrderItem";
 import { Payment } from "../entities/payments/Payment";
 import { Discount } from "../entities/payments/Discount";
 import { AuditLog } from "../entities/audit/AuditLog";
+import { Asset } from "../entities/assets/Asset";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -24,12 +26,14 @@ export const AppDataSource = new DataSource({
     Store,
     Menu,
     MenuItem,
+    Category,
     Ingredient,
     Order,
     OrderItem,
     Payment,
     Discount,
     AuditLog,
+    Asset,
   ],
   migrations: ["src/migrations/*.ts"],
   subscribers: ["src/subscribers/*.ts"],

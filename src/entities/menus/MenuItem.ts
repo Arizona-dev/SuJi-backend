@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { Menu } from "./Menu";
+import { Category } from "./Category";
 import { Ingredient } from "./Ingredient";
 
 @Entity("menu_items")
@@ -36,6 +37,12 @@ export class MenuItem {
 
   @Column()
   menuId!: string;
+
+  @ManyToOne(() => Category, (category) => category.items, { nullable: true })
+  category?: Category;
+
+  @Column({ nullable: true })
+  categoryId?: string;
 
   @ManyToMany(() => Ingredient)
   @JoinTable({

@@ -7,12 +7,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from "typeorm";
-import { Store } from "../stores/Store";
+import { Menu } from "./Menu";
 import { MenuItem } from "./MenuItem";
-import { Category } from "./Category";
 
-@Entity("menus")
-export class Menu {
+@Entity("categories")
+export class Category {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
@@ -22,20 +21,20 @@ export class Menu {
   @Column({ nullable: true })
   description?: string;
 
+  @Column({ type: "int", default: 0 })
+  position!: number;
+
   @Column({ default: true })
   isActive!: boolean;
 
-  @ManyToOne(() => Store, (store) => store.menus)
-  store!: Store;
+  @ManyToOne(() => Menu, (menu) => menu.categories)
+  menu!: Menu;
 
   @Column()
-  storeId!: string;
+  menuId!: string;
 
-  @OneToMany(() => MenuItem, (menuItem) => menuItem.menu)
+  @OneToMany(() => MenuItem, (menuItem) => menuItem.category)
   items!: MenuItem[];
-
-  @OneToMany(() => Category, (category) => category.menu)
-  categories!: Category[];
 
   @CreateDateColumn()
   createdAt!: Date;

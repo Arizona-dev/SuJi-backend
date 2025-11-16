@@ -21,6 +21,8 @@ import menuRoutes from "./routes/menus/menus.routes";
 import orderRoutes from "./routes/orders/orders.routes";
 import paymentRoutes from "./routes/payments/payments.routes";
 import inseeRoutes from "./routes/insee/insee.routes";
+import assetRoutes from "./routes/assets/assets.routes";
+import uploadRoutes from "./routes/upload/upload.routes";
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
@@ -69,6 +71,8 @@ app.use("/api/menus", menuRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/insee", inseeRoutes);
+app.use("/api/assets", assetRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);
