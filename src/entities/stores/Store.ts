@@ -57,6 +57,20 @@ export class Store {
   @Column({ default: true })
   isActive!: boolean;
 
+  // Storage management
+  @Column({
+    type: "enum",
+    enum: ["free", "pro"],
+    default: "free",
+  })
+  storagePlan!: "free" | "pro";
+
+  @Column({ type: "bigint", default: 0 })
+  storageUsed!: number; // Bytes currently used
+
+  @Column({ type: "bigint", default: 524288000 }) // 500MB in bytes
+  storageLimit!: number; // Maximum bytes allowed
+
   // International legal compliance - business registration details
   @Column({ nullable: true })
   legalBusinessName?: string;

@@ -140,24 +140,8 @@ export class AssetsController {
     try {
       const { id } = req.params;
 
-      // Get asset info before deletion to delete from S3
-      const asset = await this.assetsService.getAssetById(id);
-
-      if (!asset) {
-        res.status(404).json({
-          message: "Asset not found",
-        });
-        return;
-      }
-
-      // Delete from database first
+      // Service now handles both database and S3 deletion
       await this.assetsService.deleteAsset(id);
-
-      // Extract S3 key from URL and delete from S3
-      const key = this.s3Service.extractKeyFromUrl(asset.url);
-      if (key) {
-        await this.s3Service.deleteFile(key);
-      }
 
       res.json({
         message: "Asset deleted successfully",

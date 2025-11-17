@@ -228,27 +228,21 @@ router.post(
     body("price").isFloat({ min: 0 }),
     body("categoryId").optional().isUUID(),
     body("imageUrl").optional().trim(),
-    body("isAvailable").optional().isBoolean(),
+    body("isActive").optional().isBoolean(),
   ],
   menusController.createMenuItem.bind(menusController)
 );
 
+// Specific routes MUST come before dynamic parameter routes
+// Batch position update
 router.put(
-  "/:menuId/items/:itemId",
+  "/:menuId/items/positions",
   [
-    body("name").optional().trim().isLength({ min: 1, max: 100 }),
-    body("description").optional().trim(),
-    body("price").optional().isFloat({ min: 0 }),
-    body("categoryId").optional().isUUID(),
-    body("imageUrl").optional().trim(),
-    body("isAvailable").optional().isBoolean(),
+    body("positions").isArray(),
+    body("positions.*.id").isUUID(),
+    body("positions.*.position").isInt({ min: 0 }),
   ],
-  menusController.updateMenuItem.bind(menusController)
-);
-
-router.delete(
-  "/:menuId/items/:itemId",
-  menusController.deleteMenuItem.bind(menusController)
+  menusController.updateMenuItemPositions.bind(menusController)
 );
 
 // Bulk operations on menu items
@@ -258,7 +252,7 @@ router.put(
     body("itemIds").isArray(),
     body("itemIds.*").isUUID(),
     body("updates").isObject(),
-    body("updates.isAvailable").optional().isBoolean(),
+    body("updates.isActive").optional().isBoolean(),
     body("updates.categoryId").optional().isUUID(),
   ],
   menusController.bulkUpdateMenuItems.bind(menusController)
@@ -271,6 +265,26 @@ router.delete(
     body("itemIds.*").isUUID(),
   ],
   menusController.bulkDeleteMenuItems.bind(menusController)
+);
+
+// Individual item routes (must come AFTER specific routes like /positions and /bulk)
+router.put(
+  "/:menuId/items/:itemId",
+  [
+    body("name").optional().trim().isLength({ min: 1, max: 100 }),
+    body("description").optional().trim(),
+    body("price").optional().isFloat({ min: 0 }),
+    body("categoryId").optional().isUUID(),
+    body("imageUrl").optional().trim(),
+    body("isActive").optional().isBoolean(),
+    body("position").optional().isInt({ min: 0 }),
+  ],
+  menusController.updateMenuItem.bind(menusController)
+);
+
+router.delete(
+  "/:menuId/items/:itemId",
+  menusController.deleteMenuItem.bind(menusController)
 );
 
 // Category routes
@@ -627,6 +641,147 @@ router.post(
     body("storeId").isUUID(),
   ],
   menusController.createIngredient.bind(menusController)
+);
+
+/**
+ * @swagger
+ * /api/menus/ingredients/{id}:
+ *   put:
+ *     summary: Update ingredient information
+ *     tags: [Ingredients]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ingredient ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 100
+ *               description:
+ *                 type: string
+ *                 maxLength: 500
+ *               isAvailable:
+ *                 type: boolean
+ *               disabledUntil:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       200:
+ *         description: Ingredient updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/Ingredient'
+ *       400:
+ *         description: Invalid input data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Ingredient not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.put(
+  "/ingredients/:id",
+  [
+    body("name").optional().trim().isLength({ min: 1, max: 100 }),
+    body("description").optional().trim().isLength({ max: 500 }),
+    body("isAvailable").optional().isBoolean(),
+    body("disabledUntil").optional().isISO8601(),
+  ],
+  menusController.updateIngredient.bind(menusController)
+);
+
+/**
+ * @swagger
+ * /api/menus/ingredients/bulk:
+ *   put:
+ *     summary: Bulk update ingredients
+ *     tags: [Ingredients]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ingredientIds
+ *               - updates
+ *             properties:
+ *               ingredientIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               updates:
+ *                 type: object
+ *                 properties:
+ *                   isAvailable:
+ *                     type: boolean
+ *                   disabledUntil:
+ *                     type: string
+ *                     format: date-time
+ *     responses:
+ *       200:
+ *         description: Ingredients updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Ingredient'
+ *       400:
+ *         description: Invalid input data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.put(
+  "/ingredients/bulk",
+  [
+    body("ingredientIds").isArray(),
+    body("ingredientIds.*").isUUID(),
+    body("updates").isObject(),
+    body("updates.isAvailable").optional().isBoolean(),
+    body("updates.disabledUntil").optional().isISO8601(),
+  ],
+  menusController.bulkUpdateIngredients.bind(menusController)
 );
 
 /**

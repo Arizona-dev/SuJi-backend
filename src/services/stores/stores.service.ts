@@ -87,6 +87,7 @@ export class StoresService {
       select: [
         "id",
         "name",
+        "slug",
         "description",
         "address",
         "phone",
@@ -96,6 +97,9 @@ export class StoresService {
         "isTemporarilyClosed",
         "closureMessage",
         "legalAddress",
+        "storagePlan",
+        "storageUsed",
+        "storageLimit",
         "createdAt",
       ],
     });
@@ -107,6 +111,7 @@ export class StoresService {
       select: [
         "id",
         "name",
+        "slug",
         "description",
         "address",
         "phone",

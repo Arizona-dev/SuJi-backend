@@ -1,13 +1,31 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { body } from "express-validator";
 import { AssetsController } from "../../controllers/assets/assets.controller";
 import { uploadAsset } from "../../config/multer";
-import { verifyStoreAccess, verifyAssetAccess } from "../../middleware/assetAuthorization";
+import { verifyStoreAccess, verifyAssetAccess, checkStorageLimit } from "../../middleware/assetAuthorization";
 import { DataSource } from "typeorm";
+import multer from "multer";
 
 export function createAssetRoutes(dataSource?: DataSource): Router {
   const router: Router = Router();
   const assetsController = new AssetsController(dataSource);
+
+  // Multer error handler middleware
+  const handleMulterError = (err: any, req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          message: "File upload failed",
+          error: "Fichier trop volumineux (max 5MB)",
+        });
+      }
+      return res.status(400).json({
+        message: "File upload failed",
+        error: err.message,
+      });
+    }
+    next(err);
+  };
 
   /**
    * @swagger
@@ -98,6 +116,8 @@ export function createAssetRoutes(dataSource?: DataSource): Router {
   router.post(
     "/",
     uploadAsset,
+    handleMulterError,
+    checkStorageLimit,
     verifyStoreAccess,
     [body("storeId").isUUID()],
     assetsController.uploadAsset.bind(assetsController)

@@ -11,6 +11,7 @@ export class IngredientReactivationService {
   private dataSource: DataSource;
   private distributedCron: DistributedCronService;
   private isLeaderMode: boolean = false;
+  private realtimeCheckJob: cron.ScheduledTask | null = null;
 
   constructor(dataSource: DataSource = AppDataSource) {
     this.dataSource = dataSource;
@@ -63,9 +64,13 @@ export class IngredientReactivationService {
       where: { isActive: true },
     });
 
+    // Initialize daily scheduled jobs per store
     for (const store of stores) {
       this.scheduleReactivationForStore(store);
     }
+
+    // Initialize real-time check job (runs every minute)
+    this.scheduleRealtimeReactivation();
 
     logger.info(`Initialized ingredient reactivation cron jobs for ${stores.length} stores`);
   }
@@ -104,6 +109,75 @@ export class IngredientReactivationService {
     logger.info(
       `Scheduled ingredient reactivation for store ${store.name} at ${reactivationTime} ${store.timezone || "Europe/Paris"}`
     );
+  }
+
+  /**
+   * Schedule real-time reactivation job (runs every minute)
+   */
+  private scheduleRealtimeReactivation(): void {
+    // Stop existing job if any
+    if (this.realtimeCheckJob) {
+      this.realtimeCheckJob.stop();
+      this.realtimeCheckJob = null;
+    }
+
+    // Run every minute to check for expired disabledUntil times
+    this.realtimeCheckJob = cron.schedule(
+      "* * * * *", // Every minute
+      async () => {
+        // Use distributed locking to ensure only one instance processes
+        await this.distributedCron.executeWithLock(
+          "ingredient-reactivation:realtime",
+          async () => {
+            await this.reactivateAllExpiredIngredients();
+          },
+          120000 // 2 minute lock TTL
+        );
+      },
+      {
+        scheduled: true,
+        timezone: "Europe/Paris",
+      }
+    );
+
+    logger.info("Scheduled real-time ingredient reactivation (every minute)");
+  }
+
+  /**
+   * Reactivate all ingredients across all stores that have expired disabledUntil times
+   */
+  private async reactivateAllExpiredIngredients(): Promise<void> {
+    try {
+      const ingredientRepository = this.dataSource.getRepository(Ingredient);
+
+      // Find all disabled ingredients that should be reactivated
+      const now = new Date();
+      const disabledIngredients = await ingredientRepository.find({
+        where: {
+          isAvailable: false,
+          disabledUntil: LessThanOrEqual(now),
+        },
+      });
+
+      if (disabledIngredients.length === 0) {
+        logger.debug("No ingredients to reactivate across all stores");
+        return;
+      }
+
+      // Reactivate ingredients
+      for (const ingredient of disabledIngredients) {
+        ingredient.isAvailable = true;
+        ingredient.disabledUntil = undefined;
+      }
+
+      await ingredientRepository.save(disabledIngredients);
+
+      logger.info(
+        `Reactivated ${disabledIngredients.length} ingredients across all stores`
+      );
+    } catch (error) {
+      logger.error("Failed to reactivate expired ingredients:", error);
+    }
   }
 
   /**
@@ -254,6 +328,13 @@ export class IngredientReactivationService {
       logger.debug(`Stopped cron job for store ${storeId}`);
     });
     this.cronJobs.clear();
+
+    // Stop real-time check job
+    if (this.realtimeCheckJob) {
+      this.realtimeCheckJob.stop();
+      this.realtimeCheckJob = null;
+      logger.debug("Stopped real-time ingredient reactivation job");
+    }
   }
 
   /**

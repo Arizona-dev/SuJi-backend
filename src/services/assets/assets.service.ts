@@ -2,6 +2,7 @@ import { DataSource, Repository } from "typeorm";
 import { Asset } from "../../entities/assets/Asset";
 import { Store } from "../../entities/stores/Store";
 import { AppDataSource } from "../../config/database";
+import { S3Service } from "../s3/s3.service";
 
 export interface CreateAssetRequest {
   storeId: string;
@@ -20,10 +21,12 @@ export interface UpdateAssetRequest {
 export class AssetsService {
   private assetRepository: Repository<Asset>;
   private storeRepository: Repository<Store>;
+  private s3Service: S3Service;
 
   constructor(dataSource: DataSource = AppDataSource) {
     this.assetRepository = dataSource.getRepository(Asset);
     this.storeRepository = dataSource.getRepository(Store);
+    this.s3Service = new S3Service();
   }
 
   async getAssetsForStore(storeId: string): Promise<Asset[]> {
@@ -34,6 +37,18 @@ export class AssetsService {
 
     if (!store) {
       throw new Error("Store not found");
+    }
+
+    // If storage hasn't been calculated yet (e.g., for existing stores), calculate it now
+    if (store.storageUsed === 0 || store.storageUsed === null) {
+      try {
+        const actualFolderSize = await this.s3Service.calculateFolderSize(storeId);
+        store.storageUsed = actualFolderSize;
+        await this.storeRepository.save(store);
+      } catch (error) {
+        // Don't fail if S3 calculation fails, just log it
+        console.error("Failed to calculate initial storage:", error);
+      }
     }
 
     const assets = await this.assetRepository.find({
@@ -56,6 +71,11 @@ export class AssetsService {
 
     const asset = this.assetRepository.create(request);
     await this.assetRepository.save(asset);
+
+    // Update store storage usage with real S3 folder size
+    const actualFolderSize = await this.s3Service.calculateFolderSize(request.storeId);
+    store.storageUsed = actualFolderSize;
+    await this.storeRepository.save(store);
 
     return asset;
   }
@@ -91,7 +111,35 @@ export class AssetsService {
       throw new Error("Asset not found");
     }
 
+    // Extract S3 key before deleting from database
+    const key = this.s3Service.extractKeyFromUrl(asset.url);
+
+    // Delete from database first
     await this.assetRepository.remove(asset);
+
+    // Delete from S3
+    if (key) {
+      try {
+        await this.s3Service.deleteFile(key);
+      } catch (error) {
+        console.error("Failed to delete file from S3:", error);
+        // Don't fail the entire operation if S3 deletion fails
+        // The database record is already deleted
+      }
+    } else {
+      console.error("Failed to extract S3 key from URL:", asset.url);
+    }
+
+    // Update store storage usage with real S3 folder size
+    const store = await this.storeRepository.findOne({
+      where: { id: asset.storeId },
+    });
+
+    if (store) {
+      const actualFolderSize = await this.s3Service.calculateFolderSize(asset.storeId);
+      store.storageUsed = actualFolderSize;
+      await this.storeRepository.save(store);
+    }
   }
 
   async getAssetById(id: string): Promise<Asset | null> {

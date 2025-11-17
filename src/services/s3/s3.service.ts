@@ -1,4 +1,4 @@
-import { PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { s3Client, S3_BUCKET, generateAssetKey, getPublicUrl } from "../../config/s3";
 import { logger } from "../../utils/logger";
 
@@ -73,15 +73,62 @@ export class S3Service {
     }
   }
 
-  // Extract key from S3 URL
+  // Extract key from S3 URL (supports both S3 direct URLs and CloudFront URLs)
   extractKeyFromUrl(url: string): string | null {
     try {
-      const urlPattern = new RegExp(`https://${S3_BUCKET}\\.s3\\.[^/]+\\.amazonaws\\.com/(.+)`);
-      const match = url.match(urlPattern);
-      return match ? match[1] : null;
+      // Try S3 direct URL pattern: https://bucket.s3.region.amazonaws.com/key
+      const s3Pattern = new RegExp(`https://${S3_BUCKET}\\.s3\\.[^/]+\\.amazonaws\\.com/(.+)`);
+      const s3Match = url.match(s3Pattern);
+      if (s3Match && s3Match[1]) {
+        return s3Match[1];
+      }
+
+      // Try CloudFront or any other domain pattern: https://domain.com/key
+      // This works for CloudFront and any custom domain
+      const genericPattern = /https?:\/\/[^/]+\/(.+)/;
+      const genericMatch = url.match(genericPattern);
+      if (genericMatch && genericMatch[1]) {
+        return genericMatch[1];
+      }
+
+      logger.error("Could not extract key from URL:", url);
+      return null;
     } catch (error) {
       logger.error("Error extracting key from URL:", error);
       return null;
+    }
+  }
+
+  // Calculate total size of all files in a store's folder
+  async calculateFolderSize(storeId: string): Promise<number> {
+    try {
+      const prefix = `assets/${storeId}/`;
+      let totalSize = 0;
+      let continuationToken: string | undefined;
+
+      do {
+        const command = new ListObjectsV2Command({
+          Bucket: S3_BUCKET,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        });
+
+        const response = await s3Client.send(command);
+
+        if (response.Contents) {
+          for (const object of response.Contents) {
+            totalSize += object.Size || 0;
+          }
+        }
+
+        continuationToken = response.NextContinuationToken;
+      } while (continuationToken);
+
+      logger.info(`Calculated folder size for store ${storeId}: ${totalSize} bytes`);
+      return totalSize;
+    } catch (error) {
+      logger.error("Error calculating folder size:", error);
+      throw new Error(`Failed to calculate folder size: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

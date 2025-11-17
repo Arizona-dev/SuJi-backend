@@ -95,3 +95,77 @@ export async function verifyAssetAccess(
     });
   }
 }
+
+/**
+ * Middleware to check storage limits before upload
+ * Verifies that the store has enough available storage space
+ */
+export async function checkStorageLimit(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const storeId = req.body.storeId;
+    const file = req.file;
+
+    if (!storeId) {
+      res.status(400).json({
+        message: "Store ID is required",
+      });
+      return;
+    }
+
+    if (!file) {
+      res.status(400).json({
+        message: "No file uploaded",
+      });
+      return;
+    }
+
+    // Get store with storage info
+    const storeRepository = AppDataSource.getRepository(Store);
+    const store = await storeRepository.findOne({
+      where: { id: storeId },
+    });
+
+    if (!store) {
+      res.status(404).json({
+        message: "Store not found",
+      });
+      return;
+    }
+
+    // Check if adding this file would exceed storage limit
+    const currentUsage = Number(store.storageUsed) || 0;
+    const storageLimit = Number(store.storageLimit) || 524288000; // Default 500MB
+    const fileSize = file.size;
+
+    if (currentUsage + fileSize > storageLimit) {
+      const usedMB = (currentUsage / (1024 * 1024)).toFixed(2);
+      const limitMB = (storageLimit / (1024 * 1024)).toFixed(2);
+      const neededMB = (fileSize / (1024 * 1024)).toFixed(2);
+
+      res.status(403).json({
+        message: "Storage limit exceeded",
+        error: `You have used ${usedMB}MB of ${limitMB}MB. This file requires ${neededMB}MB. Please upgrade your plan for more storage.`,
+        storageInfo: {
+          used: currentUsage,
+          limit: storageLimit,
+          needed: fileSize,
+          plan: store.storagePlan,
+        },
+      });
+      return;
+    }
+
+    // Storage check passed
+    next();
+  } catch (error) {
+    logger.error("Storage limit check error:", error);
+    res.status(500).json({
+      message: "Failed to check storage limit",
+      error: error instanceof Error ? error.message : "Internal server error",
+    });
+  }
+}

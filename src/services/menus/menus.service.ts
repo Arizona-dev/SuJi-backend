@@ -1,4 +1,4 @@
-import { DataSource, Repository } from "typeorm";
+import { DataSource, Repository, In } from "typeorm";
 import { Menu } from "../../entities/menus/Menu";
 import { MenuItem } from "../../entities/menus/MenuItem";
 import { Category } from "../../entities/menus/Category";
@@ -36,7 +36,7 @@ export interface CreateMenuItemRequest {
   price: number;
   imageUrl?: string;
   categoryId?: string;
-  isAvailable?: boolean;
+  isActive?: boolean;
   menuId: string;
   ingredientIds?: string[];
 }
@@ -47,8 +47,16 @@ export interface UpdateMenuItemRequest {
   price?: number;
   imageUrl?: string;
   categoryId?: string;
-  isAvailable?: boolean;
+  isActive?: boolean;
+  position?: number;
   ingredientIds?: string[];
+}
+
+export interface UpdateIngredientRequest {
+  name?: string;
+  description?: string;
+  isAvailable?: boolean;
+  disabledUntil?: Date;
 }
 
 export class MenusService {
@@ -70,10 +78,10 @@ export class MenusService {
     // Try to find existing menu using QueryBuilder to properly order categories
     let menu = await this.menuRepository
       .createQueryBuilder("menu")
-      .leftJoinAndSelect("menu.items", "items")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
       .leftJoinAndSelect("items.ingredients", "ingredients")
-      .leftJoinAndSelect("items.category", "category")
-      .leftJoinAndSelect("menu.categories", "categories")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
       .where("menu.storeId = :storeId", { storeId })
       .andWhere("menu.isActive = :isActive", { isActive: true })
       .orderBy("categories.position", "ASC")
@@ -177,9 +185,9 @@ export class MenusService {
     // Load ingredients if provided
     let ingredients: Ingredient[] = [];
     if (request.ingredientIds && request.ingredientIds.length > 0) {
-      ingredients = await this.ingredientRepository.findByIds(
-        request.ingredientIds
-      );
+      ingredients = await this.ingredientRepository.find({
+        where: { id: In(request.ingredientIds) },
+      });
       if (ingredients.length !== request.ingredientIds.length) {
         throw new Error("One or more ingredients not found");
       }
@@ -192,7 +200,7 @@ export class MenusService {
       imageUrl: request.imageUrl,
       categoryId: request.categoryId,
       menuId: request.menuId,
-      isActive: request.isAvailable !== undefined ? request.isAvailable : true,
+      isActive: request.isActive !== undefined ? request.isActive : true,
       ingredients,
     });
 
@@ -202,11 +210,18 @@ export class MenusService {
       `Menu item created: ${menuItem.id} for menu: ${request.menuId}`
     );
 
-    // Return the full menu with updated items
-    return await this.menuRepository.findOne({
-      where: { id: request.menuId, isActive: true },
-      relations: ["items", "items.ingredients"],
-    }) as Menu;
+    // Return the full menu with updated items (excluding soft-deleted items)
+    const updatedMenuWithItems = await this.menuRepository
+      .createQueryBuilder("menu")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
+      .leftJoinAndSelect("items.ingredients", "ingredients")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
+      .where("menu.id = :menuId", { menuId: request.menuId })
+      .andWhere("menu.isActive = :isActive", { isActive: true })
+      .getOne();
+
+    return updatedMenuWithItems as Menu;
   }
 
   async updateMenuItem(
@@ -214,7 +229,7 @@ export class MenusService {
     request: UpdateMenuItemRequest
   ): Promise<Menu> {
     const menuItem = await this.menuItemRepository.findOne({
-      where: { id, isActive: true },
+      where: { id },
       relations: ["ingredients"],
     });
 
@@ -229,14 +244,15 @@ export class MenusService {
     if (request.price !== undefined) menuItem.price = request.price;
     if (request.imageUrl !== undefined) menuItem.imageUrl = request.imageUrl;
     if (request.categoryId !== undefined) menuItem.categoryId = request.categoryId;
-    if (request.isAvailable !== undefined) menuItem.isActive = request.isAvailable;
+    if (request.isActive !== undefined) menuItem.isActive = request.isActive;
+    if (request.position !== undefined) menuItem.position = request.position;
 
     // Update ingredients if provided
     if (request.ingredientIds !== undefined) {
       if (request.ingredientIds.length > 0) {
-        const ingredients = await this.ingredientRepository.findByIds(
-          request.ingredientIds
-        );
+        const ingredients = await this.ingredientRepository.find({
+          where: { id: In(request.ingredientIds) },
+        });
         if (ingredients.length !== request.ingredientIds.length) {
           throw new Error("One or more ingredients not found");
         }
@@ -250,16 +266,23 @@ export class MenusService {
 
     logger.info(`Menu item updated: ${id}`);
 
-    // Return the full menu with updated items
-    return await this.menuRepository.findOne({
-      where: { id: menuItem.menuId, isActive: true },
-      relations: ["items", "items.ingredients"],
-    }) as Menu;
+    // Return the full menu with updated items (excluding soft-deleted items)
+    const updatedMenuWithItems = await this.menuRepository
+      .createQueryBuilder("menu")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
+      .leftJoinAndSelect("items.ingredients", "ingredients")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
+      .where("menu.id = :menuId", { menuId: menuItem.menuId })
+      .andWhere("menu.isActive = :isActive", { isActive: true })
+      .getOne();
+
+    return updatedMenuWithItems as Menu;
   }
 
   async deleteMenuItem(id: string): Promise<Menu> {
     const menuItem = await this.menuItemRepository.findOne({
-      where: { id, isActive: true },
+      where: { id },
     });
 
     if (!menuItem) {
@@ -267,16 +290,28 @@ export class MenusService {
     }
 
     const menuId = menuItem.menuId;
+
+    // Set isActive to false as a safety measure before soft deleting
     menuItem.isActive = false;
     await this.menuItemRepository.save(menuItem);
 
-    logger.info(`Menu item deactivated: ${id}`);
+    // Soft delete the menu item
+    await this.menuItemRepository.softDelete(id);
 
-    // Return the full menu with updated items
-    return await this.menuRepository.findOne({
-      where: { id: menuId, isActive: true },
-      relations: ["items", "items.ingredients", "items.category", "categories"],
-    }) as Menu;
+    logger.info(`Menu item soft deleted: ${id}`);
+
+    // Return the full menu with updated items (excluding soft-deleted items)
+    const updatedMenuWithItems = await this.menuRepository
+      .createQueryBuilder("menu")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
+      .leftJoinAndSelect("items.ingredients", "ingredients")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
+      .where("menu.id = :menuId", { menuId })
+      .andWhere("menu.isActive = :isActive", { isActive: true })
+      .getOne();
+
+    return updatedMenuWithItems as Menu;
   }
 
   // Category methods
@@ -357,11 +392,11 @@ export class MenusService {
       throw new Error("Category not found");
     }
 
-    // Set all menu items in this category to have no category
+    // Set all menu items in this category to inactive and remove category
     await this.menuItemRepository
       .createQueryBuilder()
       .update(MenuItem)
-      .set({ categoryId: null })
+      .set({ categoryId: null, isActive: false })
       .where("categoryId = :categoryId", { categoryId: id })
       .execute();
 
@@ -383,6 +418,36 @@ export class MenusService {
     }
 
     logger.info(`Category positions updated for menu: ${menuId}`);
+  }
+
+  async updateMenuItemPositions(menuId: string, itemPositions: { id: string; position: number }[]): Promise<Menu> {
+    // Update all menu item positions in batch
+    for (const { id, position } of itemPositions) {
+      await this.menuItemRepository
+        .createQueryBuilder()
+        .update(MenuItem)
+        .set({ position })
+        .where("id = :id", { id })
+        .andWhere("menuId = :menuId", { menuId })
+        .execute();
+    }
+
+    logger.info(`Menu item positions updated for menu: ${menuId}, ${itemPositions.length} items`);
+
+    // Reload and return the menu with updated positions
+    const updatedMenu = await this.menuRepository
+      .createQueryBuilder("menu")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
+      .leftJoinAndSelect("items.ingredients", "ingredients")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
+      .where("menu.id = :menuId", { menuId })
+      .andWhere("menu.isActive = :isActive", { isActive: true })
+      .orderBy("categories.position", "ASC")
+      .addOrderBy("items.position", "ASC")
+      .getOne();
+
+    return updatedMenu as Menu;
   }
 
   async getIngredientsForStore(storeId: string): Promise<Ingredient[]> {
@@ -453,6 +518,34 @@ export class MenusService {
     return updatedIngredient;
   }
 
+  async updateIngredient(
+    id: string,
+    request: UpdateIngredientRequest
+  ): Promise<Ingredient> {
+    const ingredient = await this.ingredientRepository.findOne({
+      where: { id, isActive: true },
+    });
+
+    if (!ingredient) {
+      throw new Error("Ingredient not found");
+    }
+
+    // Update fields
+    if (request.name !== undefined) ingredient.name = request.name;
+    if (request.description !== undefined)
+      ingredient.description = request.description;
+    if (request.isAvailable !== undefined)
+      ingredient.isAvailable = request.isAvailable;
+    if (request.disabledUntil !== undefined)
+      ingredient.disabledUntil = request.disabledUntil;
+
+    const updatedIngredient = await this.ingredientRepository.save(ingredient);
+
+    logger.info(`Ingredient updated: ${id}`);
+
+    return updatedIngredient;
+  }
+
   async deleteIngredient(id: string): Promise<void> {
     const ingredient = await this.ingredientRepository.findOne({
       where: { id, isActive: true },
@@ -466,6 +559,29 @@ export class MenusService {
     await this.ingredientRepository.save(ingredient);
 
     logger.info(`Ingredient deactivated: ${id}`);
+  }
+
+  async bulkUpdateIngredients(
+    ingredientIds: string[],
+    updates: Partial<Ingredient>
+  ): Promise<Ingredient[]> {
+    // Update all ingredients in bulk
+    await this.ingredientRepository
+      .createQueryBuilder()
+      .update(Ingredient)
+      .set(updates)
+      .where("id IN (:...ingredientIds)", { ingredientIds })
+      .andWhere("isActive = :isActive", { isActive: true })
+      .execute();
+
+    logger.info(`Bulk updated ${ingredientIds.length} ingredients`);
+
+    // Return updated ingredients
+    const updatedIngredients = await this.ingredientRepository.find({
+      where: { id: In(ingredientIds) },
+    });
+
+    return updatedIngredients;
   }
 
   async bulkUpdateMenuItems(
@@ -493,11 +609,16 @@ export class MenusService {
 
     logger.info(`Bulk updated ${itemIds.length} menu items in menu: ${menuId}`);
 
-    // Reload the menu with updated items
-    const updatedMenu = await this.menuRepository.findOne({
-      where: { id: menuId, isActive: true },
-      relations: ["items", "items.category", "categories"],
-    });
+    // Reload the menu with updated items (excluding soft-deleted items)
+    const updatedMenu = await this.menuRepository
+      .createQueryBuilder("menu")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
+      .leftJoinAndSelect("items.ingredients", "ingredients")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
+      .where("menu.id = :menuId", { menuId })
+      .andWhere("menu.isActive = :isActive", { isActive: true })
+      .getOne();
 
     return updatedMenu!;
   }
@@ -512,7 +633,7 @@ export class MenusService {
       throw new Error("Menu not found");
     }
 
-    // Soft delete all menu items in bulk using query builder
+    // Set isActive to false as a safety measure before soft deleting
     await this.menuItemRepository
       .createQueryBuilder()
       .update(MenuItem)
@@ -521,13 +642,26 @@ export class MenusService {
       .andWhere("menuId = :menuId", { menuId })
       .execute();
 
-    logger.info(`Bulk deleted ${itemIds.length} menu items from menu: ${menuId}`);
+    // Soft delete all menu items in bulk
+    await this.menuItemRepository
+      .createQueryBuilder()
+      .softDelete()
+      .where("id IN (:...itemIds)", { itemIds })
+      .andWhere("menuId = :menuId", { menuId })
+      .execute();
 
-    // Reload the menu with updated items
-    const updatedMenu = await this.menuRepository.findOne({
-      where: { id: menuId, isActive: true },
-      relations: ["items", "items.category", "categories"],
-    });
+    logger.info(`Bulk soft deleted ${itemIds.length} menu items from menu: ${menuId}`);
+
+    // Reload the menu with updated items (excluding soft-deleted items)
+    const updatedMenu = await this.menuRepository
+      .createQueryBuilder("menu")
+      .leftJoinAndSelect("menu.items", "items", "items.deletedAt IS NULL")
+      .leftJoinAndSelect("items.ingredients", "ingredients")
+      .leftJoinAndSelect("items.category", "category", "category.isActive = :categoryActive", { categoryActive: true })
+      .leftJoinAndSelect("menu.categories", "categories", "categories.isActive = :categoriesActive", { categoriesActive: true })
+      .where("menu.id = :menuId", { menuId })
+      .andWhere("menu.isActive = :isActive", { isActive: true })
+      .getOne();
 
     return updatedMenu!;
   }

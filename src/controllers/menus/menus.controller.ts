@@ -9,6 +9,7 @@ import {
   UpdateCategoryRequest,
   CreateMenuItemRequest,
   UpdateMenuItemRequest,
+  UpdateIngredientRequest,
 } from "../../services/menus/menus.service";
 import { logger } from "../../utils/logger";
 import { AppDataSource } from "../../config/database";
@@ -404,6 +405,26 @@ export class MenusController {
     }
   }
 
+  async updateMenuItemPositions(req: Request, res: Response): Promise<void> {
+    try {
+      const { menuId } = req.params;
+      const { positions } = req.body;
+
+      const menu = await this.menusService.updateMenuItemPositions(menuId, positions);
+
+      res.json({
+        message: "Menu item positions updated successfully",
+        data: menu,
+      });
+    } catch (error) {
+      logger.error("Update menu item positions error:", error);
+      res.status(500).json({
+        message: "Failed to update menu item positions",
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
+
   async getIngredientsForStore(req: Request, res: Response): Promise<void> {
     try {
       const { storeId } = req.params;
@@ -453,6 +474,48 @@ export class MenusController {
       logger.error("Create ingredient error:", error);
       res.status(500).json({
         message: "Failed to create ingredient",
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
+
+  async updateIngredient(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
+        return;
+      }
+
+      const { id } = req.params;
+      const request: UpdateIngredientRequest = {
+        ...req.body,
+        disabledUntil: req.body.disabledUntil
+          ? new Date(req.body.disabledUntil)
+          : undefined,
+      };
+
+      const ingredient = await this.menusService.updateIngredient(id, request);
+
+      res.json({
+        message: "Ingredient updated successfully",
+        data: ingredient,
+      });
+    } catch (error) {
+      logger.error("Update ingredient error:", error);
+
+      if (error instanceof Error && error.message === "Ingredient not found") {
+        res.status(404).json({
+          message: "Ingredient not found",
+        });
+        return;
+      }
+
+      res.status(500).json({
+        message: "Failed to update ingredient",
         error: error instanceof Error ? error.message : "Internal server error",
       });
     }
@@ -539,6 +602,46 @@ export class MenusController {
 
       res.status(500).json({
         message: "Failed to delete ingredient",
+        error: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  }
+
+  async bulkUpdateIngredients(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
+        return;
+      }
+
+      const { ingredientIds, updates } = req.body;
+
+      // Convert disabledUntil to Date if present
+      const processedUpdates = {
+        ...updates,
+        disabledUntil: updates.disabledUntil
+          ? new Date(updates.disabledUntil)
+          : undefined,
+      };
+
+      const ingredients = await this.menusService.bulkUpdateIngredients(
+        ingredientIds,
+        processedUpdates
+      );
+
+      res.json({
+        message: `${ingredientIds.length} ingredient(s) updated successfully`,
+        data: ingredients,
+      });
+    } catch (error) {
+      logger.error("Bulk update ingredients error:", error);
+
+      res.status(500).json({
+        message: "Failed to bulk update ingredients",
         error: error instanceof Error ? error.message : "Internal server error",
       });
     }

@@ -7,6 +7,7 @@ import {
   JoinTable,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
 } from "typeorm";
 import { Menu } from "./Menu";
 import { Category } from "./Category";
@@ -44,6 +45,9 @@ export class MenuItem {
   @Column({ nullable: true })
   categoryId?: string;
 
+  @Column({ type: "integer", default: 0 })
+  position!: number;
+
   @ManyToMany(() => Ingredient)
   @JoinTable({
     name: "menu_item_ingredients",
@@ -57,4 +61,7 @@ export class MenuItem {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
+  @DeleteDateColumn()
+  deletedAt?: Date;
 }
